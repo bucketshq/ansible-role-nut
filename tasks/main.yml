@@ -14,6 +14,7 @@
 - set_fact:
     nut_vendorid: "{% set v = nut_vendor_product.stdout.split(':')[0] %}{{v}}"
     nut_productid: "{% set v = nut_vendor_product.stdout.split(':')[1] %}{{v}}"
+  notify: restart nut
 
 - fail:
     msg: Could not get nut_vendorid and nut_productid from `lsusb` output
@@ -105,7 +106,3 @@
         restart_sec: 30
         wants: nut-monitor.service nut-client.service nut-server.service
         after: nut-monitor.service
-
-- name: trigger notify
-  shell: "{{ nut_upsmon_notifycmd }}"
-  when: nut_upsmon_notifycmd is defined and nut_upsmon_notifycmd != ''

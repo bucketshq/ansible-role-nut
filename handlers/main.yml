@@ -5,3 +5,8 @@
     state: restarted
   with_items: "{{ nut_services }}"
   when: nut_enable_service
+  notify: trigger notifycmd
+
+- name: trigger notifycmd
+  command: "{{ nut_upsmon_notifycmd }}"
+  when: nut_upsmon_notifycmd_content is defined and nut_upsmon_notifycmd_content != ''
