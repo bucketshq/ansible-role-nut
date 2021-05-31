@@ -7,6 +7,18 @@
     msg: No UPS device connected via USB
   when: '"UPS" not in nut_lsusb_result.stdout'
 
+- name: Retrieve vendor and product ID
+  shell: "echo '{{nut_lsusb_result.stdout}}' | grep 'UPS' | awk '{print $6}'"
+  register: nut_vendor_product
+
+- set_fact:
+    nut_vendorid: "{% set v = nut_vendor_product.stdout.split(':')[0] %}{{v}}"
+    nut_productid: "{% set v = nut_vendor_product.stdout.split(':')[1] %}{{v}}"
+
+- fail:
+    msg: Could not get nut_vendorid and nut_productid from `lsusb` output
+  when: nut_vendorid == '' or nut_productid == ''
+
 - name: Include OS-specific variables.
   include_vars: "{{ ansible_os_family }}.yml"
 
@@ -19,6 +31,13 @@
   package:
     name: "{{ nut_packages }}"
     state: present
+
+- name: add udev rules
+  template:
+    src: nut-ups.rules.j2
+    dest: /etc/udev/rules.d/90-nut-ups.rules
+    mode: 0644
+  notify: restart nut
 
 - name: Install NUT configuration files.
   template:
@@ -86,3 +105,7 @@
         restart_sec: 30
         wants: nut-monitor.service nut-client.service nut-server.service
         after: nut-monitor.service
+
+- name: trigger notify
+  shell: "{{ nut_upsmon_notifycmd }}"
+  when: nut_upsmon_notifycmd is defined and nut_upsmon_notifycmd != ''
