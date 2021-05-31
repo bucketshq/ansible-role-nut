@@ -5,7 +5,7 @@
 {% for ups in nut_ups %}
 [{{ ups.name }}]
     driver = {{ ups.driver }}
-    port   = {{ ups.device }}
-    desc   = "{{ ups.description }}"
+    port   = {{ ups.device | default('auto') }}
+    desc   = "{{ ups.description | default('') }}"
     {{ ups.extra | default('') | indent(4) }}
 {% endfor %}

@@ -1,39 +1,91 @@
 ---
+- name: check UPS is connected via USB
+  command: lsusb
+  register: nut_lsusb_result
 
-- name: Include OS-specific variables.
-  include_vars: "{{ ansible_os_family }}.yml"
+- fail:
+    msg: No UPS device connected via USB
+  when: '"UPS" not in nut_lsusb_result.stdout'
 
-- name: Define nut_packages.
-  set_fact:
-    nut_packages: "{{ __nut_packages | list }}"
-  when: nut_packages is not defined
+- name: install nut
+  when:
+  block:
+    - name: Include OS-specific variables.
+      include_vars: "{{ ansible_os_family }}.yml"
 
-- name: Ensure NUT packages are installed.
-  package:
-    name: "{{ nut_packages }}"
-    state: present
+    - name: Define nut_packages.
+      set_fact:
+        nut_packages: "{{ __nut_packages | list }}"
+      when: nut_packages is not defined
 
-- name: Install NUT configuration files.
-  template:
-    src: "{{ item }}.j2"
-    dest: "/etc/nut/{{ item }}"
-    owner: root
-    group: nut
-    mode: 0640
-  with_items:
-    - nut.conf
-    - ups.conf
-    - upsd.users
-    - upsd.conf
-    - upsmon.conf
-  notify: restart nut
-  when: nut_managed_config
+    - name: Ensure NUT packages are installed.
+      package:
+        name: "{{ nut_packages }}"
+        state: present
 
-- name: Install custom notifycmd script.
-  copy:
-    dest: "{{ nut_upsmon_notifycmd }}"
-    content: "{{ nut_upsmon_notifycmd_content }}"
-    owner: root
-    group: nut
-    mode: 0770
-  when: nut_upsmon_notifycmd_content is defined
+    - name: Install NUT configuration files.
+      template:
+        src: "{{ item }}.j2"
+        dest: "/etc/nut/{{ item }}"
+        owner: root
+        group: nut
+        mode: 0640
+      with_items:
+        - nut.conf
+        - ups.conf
+        - upsd.users
+        - upsd.conf
+        - upsmon.conf
+      notify: restart nut
+      when: nut_managed_config
+
+    - name: Install custom notifycmd script.
+      copy:
+        dest: "{{ nut_upsmon_notifycmd }}"
+        content: "{{ nut_upsmon_notifycmd_content }}"
+        owner: root
+        group: nut
+        mode: 0770
+      notify: restart nut
+      when: nut_upsmon_notifycmd_content is defined
+
+    - name: Install custom shutdown script.
+      copy:
+        dest: "{{ nut_upsmon_shutdowncmd }}"
+        content: "{{ nut_upsmon_shutdowncmd_content }}"
+        owner: root
+        group: nut
+        mode: 0770
+      notify: restart nut
+      when: nut_upsmon_shutdowncmd_content
+
+    - name: Ensure correct permissions on log file
+      copy:
+        dest: "{{nut_logfile}}"
+        content: ""
+        owner: root
+        group: nut
+        force: no
+      notify: restart nut
+      when: nut_logfile
+
+    # create systemd service to trigger the notify command on boot
+    # since nut does not have such an event pre-built
+    - include_role:
+        name: roles/systemd-service
+      when: nut_upsmon_notifycmd is defined and nut_upsmon_notifycmd
+      vars:
+        systemd_service:
+          nut-onboot-notify:
+            type: simple
+            service_name: nut-onboot-notify
+            description: Service for triggering nut_upsmon_notifycmd on boot
+            enabled: yes
+            exec_start: "{{ nut_upsmon_notifycmd }}"
+            standard_output: journal
+            standard_error: journal
+            user: "{{ansible_user_id}}"
+            restart: "on-failure"
+            restart_sec: 30
+            wants: nut-monitor.service nut-client.service nut-server.service
+            after: nut-monitor.service
